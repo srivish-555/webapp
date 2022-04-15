@@ -6,7 +6,7 @@ version: 2.1
 # See: https://circleci.com/docs/2.0/configuration-reference/#jobs
 jobs:
   # Below is the definition of your job to build and test your app, you can rename and customize it as you want.
-  build-and-test:
+  build:
     # These next lines define a Docker executor: https://circleci.com/docs/2.0/executor-types/
     # You can specify an image from Dockerhub or use one of our Convenience Images from CircleCI's Developer Hub.
     # Be sure to update the Docker image tag below to openjdk version of your application.
@@ -16,17 +16,13 @@ jobs:
     # Add steps to the job
     # See: https://circleci.com/docs/2.0/configuration-reference/#steps
     steps:
+      - add_ssh_keys:
+          fingerprints:
+            - "0f:b3:05:30:eb:c4:f7:0d:aa:1e:9d:ff:e4:ad:ee:28"
       # Checkout the code as the first step.
       - checkout
       # Use mvn clean and package as the standard maven build phase
       - run:
-          name: Build
-          command: mvn -B -DskipTests clean package
-      # Then run your tests!
-      - run:
-          name: Test
-          command: mvn test
-      -  run:
           name: List all content from source code
           command: pwd && ls -la
       - run:
@@ -50,13 +46,18 @@ jobs:
           command: mvn test
       - run:
           name: Validate WAR file
-          command: pwd && ls -la ./target
+          command: pwd && ls -la ./target && chmod 755 ./target/api.war
+      # - run:
+      #     name: Copy setting file to target folder
+      #     command: cp /home/circleci/project/settings.xml ./target && ls -la ./target && chmod 755 ./target/api.war      
       - run:
-          name: Copy setting file to target folder
-          command: cp /home/circleci/project/settings.xml ./target && ls -la ./target       
-      - run:
-          name: Deploy to tomcat server
-          command: mvn clean install tomcat7:run
+          name: Deploy to tomcat server over SSH
+          command: |
+            ls -la ./target
+            scp -o "StrictHostKeyChecking=no" ./target/api.war ubuntu@ec2-54-151-223-91.ap-southeast-1.compute.amazonaws.com:/tmp
+            ssh -o "StrictHostKeyChecking=no" ubuntu@ec2-54-151-223-91.ap-southeast-1.compute.amazonaws.com "sudo mv /tmp/api.war /opt/tomcat/webapps/ && pwd && sudo ls -la /opt/tomcat/webapps/"
+    
+      
         
   # deploy:
   #   docker: 
@@ -68,12 +69,20 @@ jobs:
   #           cd /home/circleci/project
   #           ls -la
   #           mvn clean install tomcat7:run
-
+  #Test        
+                   
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
 workflows:
-  sample: # This is the name of the workflow, feel free to change it to better match your workflow.
-    # Inside the workflow, you define the jobs you want to run.
+  build:
     jobs:
-      - build-and-test
-#Test
+      - build:
+          filters:
+            branches:
+              only: circleci-project-setup 
+      # - deploy:
+      #     requires:
+      #       - build
+      #     filters:
+      #       branches:
+      #         only: circleci-project-setup
